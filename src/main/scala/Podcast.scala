@@ -3,24 +3,27 @@ import scala.io.Source
 
 class Podcast(val dir: File, val feedUrl: String) {
   val name = dir.getName
-  val localEpisodes = dir.listFiles
+  def localEpisodes = dir.listFiles
 }
 
 object Podcast {
-  def collect(dirName: String): Array[Podcast] = {
-    def mkPodcast(dir: File) = {
-      val feedUrlFile = new File(dir, "feed.url")
-
-      // Try to read the feed url
-      try {
-        val feedUrl = Source.fromFile(feedUrlFile).getLines.next
-        Some(new Podcast(dir, feedUrl))
-      } catch {
-        case e: Exception => None
-      }
-    }
-
+  def collect(dirName: String, nameFilter: String = ""): Array[Podcast] = {
     val dir = new File(dirName)
-    dir.listFiles.filter(_.isDirectory).map(mkPodcast).flatten
+    dir.listFiles
+       .filter(_.isDirectory)
+       .filter(dir => nameFilter.toLowerCase.r.findFirstIn(dir.getName.toLowerCase).isDefined)
+       .flatMap(fromDir)
+  }
+
+  def fromDir(dir: File): Option[Podcast] = {
+    val feedUrlFile = new File(dir, "feed.url")
+
+    // Try to read the feed url
+    try {
+      val feedUrl = Source.fromFile(feedUrlFile).getLines.next
+      Some(new Podcast(dir, feedUrl))
+    } catch {
+      case e: Exception => None
+    }
   }
 }

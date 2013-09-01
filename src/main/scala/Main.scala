@@ -5,58 +5,53 @@ object Main {
 
   def main(args: Array[String]) {
     println("Booted")
+    val nameFilter = if (args.length > 0) args(0) else ""
 
     // Use a parallel collection
-    val podcasts = Podcast.collect(".").par
+    val podcasts = Podcast.collect(".", nameFilter).par
 
     // Collect new episodes
-    val episodeUrls = podcasts.map((podcast) =>
+    val newEpisodes = podcasts.map { (podcast) =>
       try {
         NewEpisodesCollector.collect(podcast)
       } catch {
-        case e: Exception => Seq.empty[String]
+        case e: Exception => {
+          e.printStackTrace
+          new NewEpisodes(podcast, Seq.empty[String])
+        }
       }
-    )
+    }
 
     // Check if there are any new episodes
-    if (episodeUrls.flatten.isEmpty) {
+    if (newEpisodes.forall(_.isEmpty)) {
       println("Maybe next time :)")
       return
     }
 
     // Print out the new episodes
-    val podcastsWithEpisodes = podcasts.zip(episodeUrls)
-    podcastsWithEpisodes.foreach{
-      case (podcast, urls) => printNewEpisodes(podcast, urls)
-    }
+    newEpisodes.filterNot(_.isEmpty).foreach(printEpisodes)
 
     // Ask for download permission
     print("Download all? [Y/n] > ")
     val answer = readLine()
 
-    // Act accordingly
     if (positiveAnswers.contains(answer.trim)) {
       // Spawn a bunch of download processes and wait for all to exit
-      podcastsWithEpisodes.map{
-        case (podcast, urls) => downloadEpisodes(podcast, urls)
-      }.flatten.foreach(_.exitValue)
+      newEpisodes.flatMap(downloadEpisodes).foreach(_.exitValue)
     } else {
       println("kthxbye")
     }
   }
 
-  private def printNewEpisodes(podcast: Podcast, urls: Seq[String]) {
-    if (urls.isEmpty) {
-      return
-    }
-    println("New episodes for " + podcast.name + ":")
-    urls.map(Util.basename).foreach(println)
+  private def printEpisodes(episodes: NewEpisodes) {
+    println("New episodes for " + episodes.podcast.name + ":")
+    episodes.urls.map(Util.basename).foreach(println)
   }
 
-  private def downloadEpisodes(podcast: Podcast, urls: Seq[String]): Seq[Process] = {
-    urls.map((url) =>
+  private def downloadEpisodes(episodes: NewEpisodes): Seq[Process] = {
+    episodes.urls.map((url) =>
       Seq("aria2c", "--file-allocation=none", "--seed-time=0", "-d",
-          podcast.dir.getAbsolutePath, "-o", Util.basename(url), url).run()
+          episodes.podcast.dir.getAbsolutePath, "-o", Util.basename(url), url).run()
     )
   }
 }
